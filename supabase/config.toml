@@ -1,0 +1,8 @@
+project_id = "aquashield-relief"
+
+[functions.admin-users]
+verify_jwt = true
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
