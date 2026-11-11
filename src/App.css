@@ -1099,51 +1099,6 @@
   margin-top: 30px;
 }
 
-.auth-role-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px;
-  margin-top: 20px;
-  padding: 4px;
-  border: 1px solid #e0e7ef;
-  border-radius: 9px;
-  background: #f7f9fb;
-}
-
-.auth-role-switch button {
-  min-height: 36px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #71829b;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13.2px;
-  font-weight: 700;
-}
-
-.auth-role-switch button.active {
-  background: #0b1b31;
-  color: #fff;
-  box-shadow: 0 2px 5px #10203920;
-}
-
-.auth-admin-demo-note {
-  margin: 0;
-  padding: 11px;
-  border: 1px solid #f5d8bf;
-  border-radius: 7px;
-  background: #fff8f1;
-  color: #79502e;
-  font-size: 10.8px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-.auth-admin-demo-note strong {
-  color: #62360f;
-}
-
 .auth-field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
