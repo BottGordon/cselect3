@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import ProductArtwork from './ProductArtwork'
@@ -7,17 +7,7 @@ import './App.css'
 
 const aquaLogo = '/AquaShield-mark.png'
 
-type Category =
-  | 'Medical & First Aid'
-  | 'Water Purification'
-  | 'Emergency Food'
-  | 'Shelter & Apparel'
-  | 'Safety Gear'
-  | 'Emergency Power'
-  | 'Emergency Lighting'
-  | 'Emergency Communications'
-  | 'Tools & Equipment'
-  | 'Barangay Bundles'
+type Category = string
 type AuthPage =
   | 'login'
   | 'signup'
@@ -42,8 +32,8 @@ const initialStockCheckPage = () => window.location.pathname === '/checkout/inve
 const initialCheckoutPage = () =>
   window.location.pathname.startsWith('/checkout/') && window.location.pathname !== '/checkout/inventory'
 type AccountPage = 'orders' | 'track' | 'admin' | 'invoice' | 'addresses' | null
-type AdminSection = 'overview' | 'orders' | 'customers' | 'inventory' | 'fulfillment' | 'reports'
-type AdminCustomer = { id: string; firstName: string; lastName: string; username: string | null; role: 'admin' | 'buyer'; email: string; createdAt: string }
+type AdminSection = 'overview' | 'orders' | 'customers' | 'fulfillment' | 'inventory' | 'categories' | 'reports'
+type AdminCustomer = { id: string; firstName: string; lastName: string; username: string | null; role: 'admin' | 'buyer'; email: string; createdAt: string | null }
 const stockAvailabilityLabel = (stock: number) => stock < 1 ? 'Out of stock' : stock <= 10 ? 'Low stock' : 'In stock'
 const initialAccountPage = (): AccountPage => {
   if (window.location.pathname === '/orders') return 'orders'
@@ -94,12 +84,13 @@ type ProductSeed = Omit<Product, 'image' | 'stock' | 'organizationDiscountPrice'
 type AudienceType = 'solo' | 'organization'
 
 const getBulkDiscount = (quantity: number) => quantity >= 100 ? 0.15 : quantity >= 50 ? 0.1 : quantity >= 20 ? 0.05 : 0
+const categorySlug = (name: string) => name.normalize('NFKD').toLowerCase().replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 const SALES_TAX_RATE = 0.12
 const ACCOUNT_STORAGE_KEY = 'aquashield.accounts.v1'
 const DEMO_DATA_STORAGE_KEY = 'aquashield.demo-data.v1'
 const PASSWORD_HASH_ITERATIONS = 310_000
-const ADMIN_DEMO_EMAIL = 'admin@aquashield.demo'
-const ADMIN_DEMO_PASSWORD = 'AquaShield2026!'
+const LOCAL_ADMIN_EMAIL = import.meta.env.DEV ? 'admin@aquashield.demo' : ''
+const LOCAL_ADMIN_PASSWORD = import.meta.env.DEV ? 'AquaShield2026!' : ''
 
 type LocalAccount = {
   email: string
@@ -419,6 +410,57 @@ const additionalProductData: [string, string, Category, number, number][] = [
   ['Portable Hygiene Kit', 'Soap, sanitizer, wipes, and toiletries for emergency sanitation', 'Water Purification', 390, 75],
   ['Emergency Sandbags', 'Flood barriers for home protection and drainage control', 'Shelter & Apparel', 130, 210],
   ['Waterproof Poncho Pack', 'Lightweight rain protection for households and evacuees', 'Shelter & Apparel', 160, 200],
+  ['Diabetic Emergency Kit', 'Prepared glucose support and medication essentials for emergency diabetic care', 'Medical & First Aid', 690, 48],
+  ['Saline Bottles', 'Sterile saline bottles for wound cleaning and emergency eye or skin irrigation', 'Medical & First Aid', 220, 120],
+  ['Emergency Stretcher Sling', 'Portable sling support for moving injured persons during evacuation', 'Medical & First Aid', 610, 44],
+  ['Wound Closure Strips', 'Sterile skin closure strips for minor cuts and lacerations', 'Medical & First Aid', 180, 150],
+  ['Cold Pack Set', 'Reusable cold therapy packs for sprains, swelling, and minor injuries', 'Medical & First Aid', 260, 110],
+  ['Burn Treatment Kit', 'Sterile burn care supplies for first response after heat or fire exposure', 'Medical & First Aid', 420, 60],
+  ['Pulse Oximeter', 'Portable oxygen level monitor for field, home, or emergency assessment', 'Medical & First Aid', 950, 35],
+  ['Portable Distiller', 'Compact distillation unit for converting unsafe water into clean water', 'Water Purification', 1980, 20],
+  ['Soup & Instant Noodle Packs', 'Shelf-stable noodles and soup packs for quick hot meals in outages', 'Emergency Food', 260, 210],
+  ['Oatmeal / Breakfast Packs', 'Easy breakfast meals for families during power outages and sheltering', 'Emergency Food', 210, 220],
+  ['Protein Snack Packs', 'Shelf-stable protein snacks for longer emergency readiness', 'Emergency Food', 290, 240],
+  ['Fruit Cup / Dessert Packs', 'Ready fruit and dessert servings with extended shelf life', 'Emergency Food', 240, 180],
+  ['Baby Food Emergency Pack', 'Easy-to-prepare infant food set for family emergency kits', 'Emergency Food', 380, 65],
+  ['Vegetarian Emergency Meal Pack', 'Plant-based emergency meal kit for households with dietary preferences', 'Emergency Food', 380, 130],
+  ['Halal Emergency Meal Pack', 'Shelf-stable halal meal options for family and community preparedness', 'Emergency Food', 400, 110],
+  ['Mosquito Repellent Kit', 'Bug protection essentials for evacuation centers and camps', 'Shelter & Apparel', 170, 230],
+  ['Flood Boots', 'Water-resistant protective boots for flood response and cleanup work', 'Shelter & Apparel', 950, 55],
+  ['Emergency Whistle Pack', 'High-volume whistle and attachment set for alerting households in emergencies', 'Safety Gear', 95, 180],
+  ['Air Horn Alarm', 'High-decibel alert device for emergency communications and warning', 'Safety Gear', 190, 200],
+  ['Glow Stick Bundle', 'Long-lasting emergency lighting for kits, bags, and shelters', 'Emergency Lighting', 130, 300],
+  ['Car Jump Starter', 'Portable jump starter for vehicles in storm and flood emergencies', 'Emergency Power', 3200, 18],
+  ['Reflective Safety Tape', 'Visible hazard marking tape for emergency routes and staging areas', 'Safety Gear', 120, 250],
+  ['Signal Flare Pack', 'Visible distress signaling tools for nighttime emergencies and evacuation', 'Safety Gear', 340, 75],
+  ['Pet Evacuation Carrier', 'Secure carrier for cats and small dogs during flood evacuation', 'Shelter & Apparel', 980, 42],
+  ['Pet Food Emergency Pack', 'Shelf-stable meal packs for dogs and cats during flooding and outages', 'Emergency Food', 320, 78],
+  ['Pet Water Bowl Set', 'Portable bowls and feeding set for pets in evacuation shelters', 'Shelter & Apparel', 180, 120],
+  ['Pet Leash & Harness Set', 'Durable control set for safe pet movement in flood-risk areas', 'Safety Gear', 420, 70],
+  ['Pet First Aid Kit', 'Emergency care essentials for cats and dogs during disasters', 'Medical & First Aid', 540, 53],
+  ['Pet Hygiene Wipes', 'Quick-cleaning wipes for pets after floodwater exposure', 'Water Purification', 160, 150],
+  ['Infant Hygiene Kit', 'Baby-safe sanitation essentials for infants during flood emergencies', 'Water Purification', 290, 95],
+  ['Infant Water Bottle Set', 'Leak-proof water bottles and feeding accessories for children', 'Water Purification', 250, 110],
+  ['Children’s Emergency Rain Suit', 'Waterproof rain suit for kids during flood evacuation and rain exposure', 'Shelter & Apparel', 620, 62],
+  ['Child Safety Wristband', 'Identification wristband for children during evacuation and sheltering', 'Safety Gear', 110, 180],
+  ['Infant Thermal Wrap', 'Warm protective wrap for babies during cold and wet emergency conditions', 'Shelter & Apparel', 310, 82],
+  ['Children’s Safety Vest', 'Small reflective vest for kids in evacuation routes and public shelters', 'Safety Gear', 280, 100],
+  ['Pediatric Thermal Blanket', 'Compact warming blanket sized for infants and young children', 'Shelter & Apparel', 210, 130],
+  ['Pediatric Oral Rehydration Pack', 'Electrolyte and rehydration supplies for child care in heat and flood conditions', 'Medical & First Aid', 360, 72],
+  ['Emergency Infant Formula Pack', 'Ready-to-use infant feeding supplies for emergency household use', 'Emergency Food', 420, 58],
+  ['Pet Rescue Float Vest', 'Floating safety vest for dogs during floodwater emergencies', 'Safety Gear', 680, 45],
+  ['Portable Baby Crib Sheet Set', 'Clean, compact bed sheets for infant rest in shelters', 'Shelter & Apparel', 220, 100],
+  ['Family Hygiene Sanitizer Bundle', 'Bulk sanitizer and cleaning essentials for children and parents', 'Water Purification', 300, 110],
+  ['Children’s Waterproof Backpack', 'Small backpack for kids’ emergency essentials and comfort items', 'Shelter & Apparel', 420, 70],
+  ['Baby Diaper Emergency Pack', 'Packing set for infant hygiene and care during shelter stays', 'Water Purification', 280, 90],
+  ['Toddler Life Vest', 'Child-sized flotation aid for water emergencies and flood response', 'Safety Gear', 430, 60],
+  ['Easy-Grip Walking Cane', 'Sturdy walking aid for seniors during evacuation and shelter movement', 'Shelter & Apparel', 520, 52],
+  ['Wheelchair Rain Cover', 'Water-resistant cover protecting wheelchair users during floods and storms', 'Shelter & Apparel', 680, 44],
+  ['Emergency Hearing Aid Kit', 'Compact storage and care kit for hearing-assist devices during emergencies', 'Medical & First Aid', 390, 48],
+  ['Seat Cushion Comfort Pack', 'Pressure-relief cushion for elderly and PWD users during shelter stays', 'Shelter & Apparel', 440, 58],
+  ['Wheelchair Battery Backup', 'Emergency battery support for powered mobility devices during outages', 'Emergency Power', 2100, 18],
+  ['Senior Medication Organizer', 'Large-label organizer for elderly medicine schedules and emergency prescriptions', 'Medical & First Aid', 250, 95],
+  ['Mobility Aid Storage Bag', 'Waterproof storage for canes, walkers, and mobility accessories', 'Shelter & Apparel', 260, 105],
 ]
 
 function makeProductImage(id: number, name: string, category: Category): string {
@@ -526,6 +568,57 @@ const productNameImageMap: Record<string, string> = {
   'Emergency Water Storage Jerrican 20L': '/Emergency%20Water%20Storage%20Jerrican%2020L.webp',
   'Portable Hygiene Kit': '/Portable%20Hygiene%20Kit.webp',
   'Waterproof Poncho Pack': '/Poncho.webp',
+  'Diabetic Emergency Kit': '/Diabetic%20Emergency%20Kit.png',
+  'Saline Bottles': '/Saline%20Bottles.webp',
+  'Emergency Stretcher Sling': '/Emergency%20Stretcher%20Sling.jpg',
+  'Wound Closure Strips': '/Wound%20Closure%20Strips.webp',
+  'Cold Pack Set': '/Cold%20Pack%20Set.webp',
+  'Burn Treatment Kit': '/Burn%20Treatment%20Kit.webp',
+  'Pulse Oximeter': '/Pulse%20Oximeter.webp',
+  'Portable Distiller': '/Portable%20Distiller.webp',
+  'Soup & Instant Noodle Packs': '/Soup%20%26%20Instant%20Noodle%20Packs.webp',
+  'Oatmeal / Breakfast Packs': '/Oatmeal%20Breakfast%20Packs.webp',
+  'Protein Snack Packs': '/Protein%20Snack%20Packs.webp',
+  'Fruit Cup / Dessert Packs': '/Fruit%20Cup%20Dessert%20Packs.png',
+  'Baby Food Emergency Pack': '/Baby%20Food%20Emergency%20Pack.webp',
+  'Vegetarian Emergency Meal Pack': '/Vegetarian%20Emergency%20Meal%20Pack.webp',
+  'Halal Emergency Meal Pack': '/Halal%20Emergency%20Meal%20Pack.png',
+  'Mosquito Repellent Kit': '/Mosquito%20Repellent%20Kit.webp',
+  'Flood Boots': '/Flood%20Boots.webp',
+  'Emergency Whistle Pack': '/Emergency%20Whistle%20Pack.webp',
+  'Air Horn Alarm': '/Air%20Horn%20Alarm.png',
+  'Glow Stick Bundle': '/Glow%20Stick%20Bundle.webp',
+  'Car Jump Starter': '/Car%20Jump%20Starter.webp',
+  'Reflective Safety Tape': '/Reflective%20Safety%20Tape.webp',
+  'Signal Flare Pack': '/Signal%20Flare%20Pack.webp',
+  'Pet Evacuation Carrier': '/Pet%20Evacuation%20Carrier.webp',
+  'Pet Food Emergency Pack': '/Pet%20Food%20Emergency%20Pack.webp',
+  'Pet Water Bowl Set': '/Pet%20Water%20Bowl%20Set.webp',
+  'Pet Leash & Harness Set': '/Pet%20Leash%20%26%20Harness%20Set.webp',
+  'Pet First Aid Kit': '/Pet%20First%20Aid%20Kit.webp',
+  'Pet Hygiene Wipes': '/Pet%20Hygiene%20Wipes.webp',
+  'Pet Rescue Float Vest': '/Pet%20Rescue%20Float%20Vest.webp',
+  'Infant Hygiene Kit': '/Infant%20Hygiene%20Kit.webp',
+  'Infant Water Bottle Set': '/Infant%20Water%20Bottle%20Set.png',
+  'Children’s Emergency Rain Suit': '/Children%E2%80%99s%20Emergency%20Rain%20Suit.webp',
+  'Children’s Safety Vest': '/Children%E2%80%99s%20Safety%20Vest.webp',
+  'Child Safety Wristband': '/Child%20Safety%20Wristband.webp',
+  'Infant Thermal Wrap': '/Infant%20Thermal%20Wrap.webp',
+  'Pediatric Thermal Blanket': '/Pediatric%20Thermal%20Blanket.webp',
+  'Pediatric Oral Rehydration Pack': '/Pediatric%20Oral%20Rehydration%20Pack.png',
+  'Emergency Infant Formula Pack': '/Emergency%20Infant%20Formula%20Pack.png',
+  'Portable Baby Crib Sheet Set': '/Portable%20Baby%20Crib%20Sheet%20Set.webp',
+  'Family Hygiene Sanitizer Bundle': '/Family%20Hygiene%20Sanitizer%20Bundle.png',
+  'Children’s Waterproof Backpack': '/Children%E2%80%99s%20Waterproof%20Backpack.webp',
+  'Baby Diaper Emergency Pack': '/Baby%20Diaper%20Emergency%20Pack.webp',
+  'Toddler Life Vest': '/Toddler%20Life%20Vest.webp',
+  'Easy-Grip Walking Cane': '/Easy-Grip%20Walking%20Cane.png',
+  'Wheelchair Rain Cover': '/Wheelchair%20Rain%20Cover.webp',
+  'Emergency Hearing Aid Kit': '/Emergency%20Hearing%20Aid%20Kit.png',
+  'Seat Cushion Comfort Pack': '/Seat%20Cushion%20Comfort%20Pack.webp',
+  'Wheelchair Battery Backup': '/Wheelchair%20Battery%20Backup.webp',
+  'Senior Medication Organizer': '/Senior%20Medication%20Organizer.png',
+  'Mobility Aid Storage Bag': '/Mobility%20Aid%20Storage%20Bag.webp',
 }
 
 const demoProducts: Product[] = productSeeds.map((product) => ({
@@ -535,6 +628,15 @@ const demoProducts: Product[] = productSeeds.map((product) => ({
   organizationDiscountPrice: Math.round(product.price * 0.95),
   isKitBag: product.id === 1,
 }))
+
+const makeDemoCatalogSignature = () => JSON.stringify(demoProducts.map((product) => [
+  product.id,
+  product.name,
+  product.category,
+  product.price,
+  product.stock,
+  product.image,
+]))
 
 const categories = [
   'All items',
@@ -547,15 +649,19 @@ const categories = [
   'Emergency Lighting',
   'Emergency Communications',
   'Tools & Equipment',
+  'Pets',
+  'Infants & Children',
+  'Elderly & PWDs',
   'Barangay Bundles',
 ] as const
-type CategoryFilter = (typeof categories)[number]
+type CategoryFilter = string
 
 type SavedDemoData = {
   orders: OrderRecord[]
   products: Product[]
   inventory: Record<number, number>
   customerReviews: Record<number, CustomerReview[]>
+  categories: string[]
   warning?: string
   preserveStoredData?: boolean
 }
@@ -569,7 +675,7 @@ function isSavedProduct(value: unknown): value is Product {
   return Number.isSafeInteger(value.id) && Number(value.id) > 0
     && typeof value.name === 'string' && value.name.trim().length > 0 && value.name.length <= 120
     && typeof value.description === 'string' && value.description.length <= 600
-    && typeof value.category === 'string' && categories.includes(value.category as CategoryFilter)
+    && typeof value.category === 'string' && value.category.trim().length > 0 && value.category.length <= 80
     && typeof value.price === 'number' && Number.isFinite(value.price) && value.price >= 0
     && typeof value.image === 'string'
     && typeof value.stock === 'number' && Number.isSafeInteger(value.stock) && value.stock >= 0
@@ -594,6 +700,7 @@ function readSavedDemoData(): SavedDemoData {
     products: demoProducts,
     inventory: Object.fromEntries(demoProducts.map((product) => [product.id, product.stock])),
     customerReviews: {} as Record<number, CustomerReview[]>,
+    categories: [...categories],
   }
   try {
     const stored = window.localStorage.getItem(DEMO_DATA_STORAGE_KEY)
@@ -603,10 +710,17 @@ function readSavedDemoData(): SavedDemoData {
       || !Array.isArray(parsed.orders) || !parsed.orders.every(isSavedOrder)
       || !Array.isArray(parsed.products) || !parsed.products.every(isSavedProduct)
       || !isPlainRecord(parsed.inventory)
-      || !isPlainRecord(parsed.customerReviews)) {
-      return { ...defaults, warning: 'Saved demo data could not be read. The sample catalog is shown; existing browser data was left untouched.', preserveStoredData: true }
+      || !isPlainRecord(parsed.customerReviews)
+      || (parsed.categories !== undefined && (!Array.isArray(parsed.categories) || !parsed.categories.every((category) => typeof category === 'string' && category.trim().length > 0)))) {
+      return { ...defaults, warning: 'Saved browser data could not be read. The product catalog is shown; existing browser data was left untouched.', preserveStoredData: true }
     }
-    const productIds = new Set((parsed.products as Product[]).map((product) => product.id))
+    const storedCatalogSignature = typeof parsed.catalogSignature === 'string' ? parsed.catalogSignature : ''
+    if (storedCatalogSignature !== makeDemoCatalogSignature()) {
+      window.localStorage.removeItem(DEMO_DATA_STORAGE_KEY)
+      return defaults
+    }
+    const storedProductIds = new Set((parsed.products as Product[]).map((product) => product.id))
+    const productIds = storedProductIds
     const inventory = Object.fromEntries(Object.entries(parsed.inventory).flatMap(([id, quantity]) => {
       const productId = Number(id)
       return productIds.has(productId) && typeof quantity === 'number' && Number.isSafeInteger(quantity) && quantity >= 0
@@ -615,6 +729,7 @@ function readSavedDemoData(): SavedDemoData {
     }))
     const products = (parsed.products as Product[]).map((product) => ({
       ...product,
+      image: productNameImageMap[product.name] ?? firstEightProductImages[product.id] ?? product.image ?? makeProductImage(product.id, product.name, product.category),
       stock: inventory[product.id] ?? product.stock,
       stockWarning: (inventory[product.id] ?? product.stock) <= 10,
     }))
@@ -627,9 +742,12 @@ function readSavedDemoData(): SavedDemoData {
         && typeof review.date === 'string' && typeof review.recommended === 'boolean')
       return [[Number(id), validReviews]]
     }))
-    return { orders: parsed.orders as OrderRecord[], products, inventory, customerReviews }
+    const savedCategories = Array.isArray(parsed.categories)
+      ? [...new Set(parsed.categories.map((category) => String(category).trim()).filter(Boolean))]
+      : [...categories]
+    return { orders: parsed.orders as OrderRecord[], products, inventory, customerReviews, categories: savedCategories }
   } catch {
-    return { ...defaults, warning: 'Browser storage is unavailable. Demo changes may not survive a refresh.' }
+    return { ...defaults, warning: 'Browser storage is unavailable. Changes may not survive a refresh.' }
   }
 }
 
@@ -813,8 +931,8 @@ function AuthScreen({
       }
 
       if (isAdminMode) {
-        if (normalizedEmail !== ADMIN_DEMO_EMAIL || password !== ADMIN_DEMO_PASSWORD) {
-          setFormMessage('The admin demo email or password is incorrect.')
+        if (!import.meta.env.DEV || normalizedEmail !== LOCAL_ADMIN_EMAIL || password !== LOCAL_ADMIN_PASSWORD) {
+          setFormMessage('The administrator email or password is incorrect.')
           return
         }
         onAdminLogin(normalizedEmail)
@@ -1060,14 +1178,7 @@ function AuthScreen({
 
             {!isSignup && (
               <>
-                {isAdminMode ? (
-                  !databaseConfigured ? (
-                    <p className="auth-admin-demo-note">
-                      Demo credentials: <strong>{ADMIN_DEMO_EMAIL}</strong> / <strong>{ADMIN_DEMO_PASSWORD}</strong>.
-                      This front-end demo does not provide production admin security.
-                    </p>
-                  ) : null
-                ) : (
+                {!isAdminMode && (
                   <>
                     {!databaseConfigured && <button className="auth-guest" type="button" onClick={onGuestContinue}>
                       Continue as Guest
@@ -1175,7 +1286,6 @@ function AuthStatusScreen({
               <button className="auth-status-primary" type="button" onClick={() => onNavigate('forgot-password', email)}>Reset Password</button>
               <button className="auth-status-secondary" type="button" onClick={() => setSupportMessage('Support contact will be available when account services are connected.')}>Contact Support</button>
               {supportMessage && <small className="auth-status-disclaimer" role="status">{supportMessage}</small>}
-              <small className="auth-status-disclaimer">Demo lockout only; authentication is not connected.</small>
             </>
           )}
         </div>
@@ -2228,7 +2338,6 @@ function CartPage({
             <div><span>Delivery</span><span>Calculated at checkout</span></div>
             <div className="full-cart-total"><span>Total before delivery</span><strong>{formatPrice(subtotal + tax)}</strong></div>
             <button type="button" onClick={onProceedToCheckout}>Proceed to Checkout</button>
-            <p>Inventory is rechecked before checkout. Payment is not connected in this preview.</p>
             <button className="full-cart-continue" type="button" onClick={onContinueShopping}>Continue Shopping</button>
           </aside>
         </div>
@@ -2642,7 +2751,6 @@ function CheckoutPage({
             <div><dt>Delivery</dt><dd>{deliveryMethod}</dd></div>
             <div><dt>Payment</dt><dd>{paymentMethod}</dd></div>
           </dl>
-          <div className="checkout-demo-note">This checkout is a preview. Payments are not processed and orders are not sent to a store.</div>
           <div className="checkout-actions">
             <button className="checkout-secondary" type="button" onClick={() => onNavigate('payment')}>Back</button>
             <button className="checkout-primary" type="button" disabled={!hasRequiredBulkOrder} onClick={() => onNavigate('processing')}>Place order</button>
@@ -2683,7 +2791,6 @@ function CheckoutPage({
         <section className="checkout-success-card">
           <span className="checkout-status-icon success">✓</span>
           <h1>Order confirmed</h1>
-          <p>This is a demo checkout. Wallet payments below are simulated and do not charge an account.</p>
           <dl className="checkout-review-details">
             <div><dt>Order</dt><dd>{completedOrder.id}</dd></div>
             <div><dt>Subtotal</dt><dd>{formatPrice(completedOrder.subtotal)}</dd></div>
@@ -2691,12 +2798,11 @@ function CheckoutPage({
             <div><dt>Shipping</dt><dd>{completedOrder.shipping === 0 ? 'FREE' : formatPrice(completedOrder.shipping)}</dd></div>
             <div><dt>Total</dt><dd>{formatPrice(completedOrder.total)}</dd></div>
             <div><dt>Status</dt><dd>{completedOrder.status}</dd></div>
-            {walletPayment && <div><dt>Payment</dt><dd>{completedOrder.paymentStatus === 'paid' ? 'Demo paid' : completedOrder.paymentStatus === 'failed' ? 'Demo payment declined' : 'Awaiting demo payment'}</dd></div>}
+            {walletPayment && <div><dt>Payment</dt><dd>{completedOrder.paymentStatus === 'paid' ? 'Payment recorded' : completedOrder.paymentStatus === 'failed' ? 'Payment not completed' : 'Awaiting payment'}</dd></div>}
           </dl>
           {walletPayment && completedOrder.paymentStatus !== 'paid' && (
             <div className="checkout-demo-note">
               <strong>Simulate {completedOrder.paymentMethod}</strong>
-              <p>Choose an outcome for the academic demo. No real wallet is contacted.</p>
               <div className="checkout-actions">
                 <button className="checkout-secondary" type="button" disabled={paymentSimulationBusy} onClick={async () => {
                   setPaymentSimulationBusy(true)
@@ -2743,7 +2849,7 @@ function CheckoutPage({
         {renderDeliveryForm() ?? renderPaymentStep()}
         {renderOrderSummary()}
       </div>
-      <p className="checkout-demo-footer">Demo checkout: orders and stock are saved only in this browser. Payments are not processed.</p>
+      
     </main>
   )
 }
@@ -2752,19 +2858,28 @@ function OrdersPage({
   orders,
   onTrackOrder,
   onInvoice,
+  onViewProduct,
+  onWriteReview,
 }: {
   orders: OrderRecord[]
   onTrackOrder: (orderId?: string) => void
   onInvoice: (orderId: string) => void
+  onViewProduct: (product: Product) => void
+  onWriteReview: (product: Product) => void
 }) {
   const [selectedOrderId, setSelectedOrderId] = useState(orders[0]?.id ?? '')
+  useEffect(() => {
+    if (!orders.some((order) => order.id === selectedOrderId)) {
+      setSelectedOrderId(orders[0]?.id ?? '')
+    }
+  }, [orders, selectedOrderId])
   const selectedOrder = orders.find((order) => order.id === selectedOrderId)
 
   return (
     <main className="account-orders-page">
       <section className="account-orders-profile">
         <h1>Order History</h1>
-        <p>View and track your AquaShield demo orders.</p>
+            <p>View and track your AquaShield orders.</p>
         <nav aria-label="Account">
           <span className="active">Orders</span>
           <a href="/track-order" onClick={(event) => { event.preventDefault(); onTrackOrder() }}>Track an Order</a>
@@ -2774,15 +2889,15 @@ function OrdersPage({
         <h2>Orders</h2>
         {orders.length === 0 ? (
           <div className="account-orders-empty">
-            <p>No orders in this preview yet.</p>
-            <span>Complete the demo checkout to see an order here.</span>
+            <p>No orders yet.</p>
+            <span>Your orders will appear here after checkout.</span>
           </div>
         ) : orders.map((order) => (
           <article className={`account-order-card${selectedOrderId === order.id ? ' selected' : ''}`} key={order.id}>
             <div><strong>{order.id}</strong><small>{order.createdAt} · {order.items.reduce((count, item) => count + item.quantity, 0)} items · {order.paymentMethod}</small></div>
             <strong>{formatPrice(order.total)}</strong>
             <span className={`account-order-status ${order.status.toLowerCase().replace(' ', '-')}`}>{order.status}</span>
-            <button type="button" onClick={() => setSelectedOrderId(order.id)}>View details</button>
+            <button type="button" aria-expanded={selectedOrderId === order.id} onClick={() => setSelectedOrderId(order.id)}>View details</button>
           </article>
         ))}
         {selectedOrder && (
@@ -2791,11 +2906,24 @@ function OrdersPage({
             <div><span>Delivery address</span><strong>{selectedOrder.address}</strong></div>
             <div><span>Delivery method</span><strong>{selectedOrder.deliveryMethod}</strong></div>
             <div><span>Status</span><strong>{selectedOrder.status}</strong></div>
+            <div className="account-order-items">
+              <span>Items</span>
+              {selectedOrder.items.map(({ product, quantity }, index) => (
+                <div className="account-order-item" key={`${product.id}-${index}`}>
+                  <strong>{product.name} · Qty {quantity}</strong>
+                  <div>
+                    <button type="button" onClick={() => onViewProduct(product)}>View product</button>
+                    {selectedOrder.status === 'Delivered' && (
+                      <button type="button" onClick={() => onWriteReview(product)}>Leave a review</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
             <button type="button" onClick={() => onTrackOrder(selectedOrder.id)}>Track this order</button>
             <button type="button" onClick={() => onInvoice(selectedOrder.id)}>View invoice</button>
           </section>
         )}
-        <p className="checkout-demo-footer">Demo order history is stored only in this browser.</p>
       </section>
     </main>
   )
@@ -2861,6 +2989,7 @@ const fulfillmentStatuses: OrderRecord['status'][] = ['Awaiting payment', ...ord
 
 function AdminOrdersPage({
   products,
+  categories,
   orders,
   customers,
   section,
@@ -2868,6 +2997,10 @@ function AdminOrdersPage({
   onSelectSection,
   onUpdateInventory,
   onCreateProduct,
+  onCreateCategory,
+  onRenameCategory,
+  onDeleteCategory,
+  onMoveProductCategory,
   onUpdateStatus,
   onTrackOrder,
   onInvoice,
@@ -2876,6 +3009,7 @@ function AdminOrdersPage({
   onResetUserPassword,
 }: {
   products: Product[]
+  categories: string[]
   orders: OrderRecord[]
   customers: AdminCustomer[]
   section: AdminSection
@@ -2883,6 +3017,10 @@ function AdminOrdersPage({
   onSelectSection: (section: AdminSection) => void
   onUpdateInventory: (productId: number, quantity: number) => void
   onCreateProduct: (product: NewProductInput) => Promise<void>
+  onCreateCategory: (name: string) => Promise<void>
+  onRenameCategory: (previousName: string, nextName: string) => Promise<void>
+  onDeleteCategory: (name: string) => Promise<void>
+  onMoveProductCategory: (productId: number, category: string) => Promise<void>
   onUpdateStatus: (orderId: string, status: OrderRecord['status']) => void
   onTrackOrder: (orderId: string) => void
   onInvoice: (orderId: string) => void
@@ -2895,6 +3033,11 @@ function AdminOrdersPage({
   const [inventoryInputs, setInventoryInputs] = useState<Record<number, string>>({})
   const [newProductMessage, setNewProductMessage] = useState('')
   const [isCreatingProduct, setIsCreatingProduct] = useState(false)
+  const [categoryMessage, setCategoryMessage] = useState('')
+  const [categoryBusy, setCategoryBusy] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [editedCategoryName, setEditedCategoryName] = useState('')
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'buyer' | 'admin'>('all')
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const [userMessage, setUserMessage] = useState('')
@@ -2987,14 +3130,15 @@ function AdminOrdersPage({
     orders: { title: 'Order management', description: 'Review buyer orders, payment methods, and order status.' },
     customers: { title: 'Customer accounts', description: 'Review registered buyers and account roles.' },
     inventory: { title: 'Inventory control', description: 'Monitor stock levels and record manual stock adjustments.' },
+    categories: { title: 'Category management', description: 'Organize products into clear storefront categories.' },
     fulfillment: { title: 'Fulfillment center', description: 'See which orders need packing, dispatch, or delivery follow-up.' },
-    reports: { title: 'Business reports', description: 'Review sales mix and operational performance from demo orders.' },
+    reports: { title: 'Business reports', description: 'Review sales mix and operational performance from placed orders.' },
   }
   const title = pageTitles[section]
 
   function renderOrderTable(orderList: OrderRecord[]) {
     if (orderList.length === 0) {
-      return <div className="admin-empty-state"><span><Icon name="cart" /></span><h3>No buyer orders yet</h3><p>Demo orders placed in this browser will appear here.</p></div>
+      return <div className="admin-empty-state"><span><Icon name="cart" /></span><h3>No buyer orders yet</h3><p>Orders placed in this browser will appear here.</p></div>
     }
     return (
       <div className="admin-order-table-wrap">
@@ -3047,13 +3191,14 @@ function AdminOrdersPage({
           </section>
         </div>
       )}
-      {section === 'orders' && <section className="admin-orders-panel"><div className="admin-orders-toolbar"><div><h2>Buyer orders</h2><p>{visibleOrders.length} order{visibleOrders.length === 1 ? '' : 's'} shown</p></div><label>Filter orders<select value={filter} onChange={(event) => setFilter(event.target.value)}><option>All orders</option>{orderStatuses.map((status) => <option key={status}>{status}</option>)}<option>Awaiting payment</option></select></label></div>{visibleOrders.length === 0 ? <div className="admin-empty-state"><h3>{orders.length === 0 ? 'No buyer orders yet' : 'No orders in this status'}</h3><p>{orders.length === 0 ? 'Orders placed in this browser will appear here.' : 'Choose another status filter to see more orders.'}</p></div> : renderOrderTable(visibleOrders)}<p className="checkout-demo-footer">Demo orders are stored only in this browser.</p></section>}
+      {section === 'orders' && <section className="admin-orders-panel"><div className="admin-orders-toolbar"><div><h2>Buyer orders</h2><p>{visibleOrders.length} order{visibleOrders.length === 1 ? '' : 's'} shown</p></div><label>Filter orders<select value={filter} onChange={(event) => setFilter(event.target.value)}><option>All orders</option>{orderStatuses.map((status) => <option key={status}>{status}</option>)}<option>Awaiting payment</option></select></label></div>{visibleOrders.length === 0 ? <div className="admin-empty-state"><h3>{orders.length === 0 ? 'No buyer orders yet' : 'No orders in this status'}</h3><p>{orders.length === 0 ? 'Orders placed in this browser will appear here.' : 'Choose another status filter to see more orders.'}</p></div> : renderOrderTable(visibleOrders)}</section>}
       {section === 'customers' && (
         <section className="admin-orders-panel">
           <div className="admin-orders-toolbar">
             <div><h2>Accounts</h2><p>{visibleCustomers.length} of {customers.length} accounts shown</p></div>
             <label>Filter by role<select aria-label="Filter accounts by role" value={userRoleFilter} onChange={(event) => setUserRoleFilter(event.target.value as typeof userRoleFilter)}><option value="all">All roles</option><option value="buyer">Buyers</option><option value="admin">Administrators</option></select></label>
           </div>
+          {!supabaseConfigured && <p className="admin-product-message" role="status">Only accounts created in this browser are shown. Connect Supabase to view shared users and send invitations.</p>}
           <form className="admin-user-invite" onSubmit={(event) => { void submitInvite(event) }}>
             <div><span className="prepared-eyebrow">Account management</span><h3>Invite an account</h3><p>The recipient sets their own password from the email invitation.</p></div>
             <div className="admin-user-invite-fields">
@@ -3073,7 +3218,7 @@ function AdminOrdersPage({
                   <div className="admin-user-summary">
                     <div><strong>{[customer.firstName, customer.lastName].filter(Boolean).join(' ') || 'AquaShield buyer'}</strong><span>{customer.email || 'No email on file'} · {customer.username || 'No username'}</span></div>
                     <span className={`admin-user-role ${customer.role}`}>{customer.role === 'admin' ? 'Administrator' : 'Buyer'}</span>
-                    <span className="admin-user-joined">Joined {new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(customer.createdAt))}</span>
+                    <span className="admin-user-joined">{customer.createdAt ? `Joined ${new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(customer.createdAt))}` : 'Browser account'}</span>
                     <div className="admin-order-actions">
                       <button type="button" onClick={() => { setEditingUserId(editingUserId === customer.id ? null : customer.id); setUserMessage('') }}>{editingUserId === customer.id ? 'Close edit' : 'Edit details'}</button>
                       <button type="button" disabled={!customer.email || userBusy || !supabaseConfigured} onClick={async () => { setUserBusy(true); setUserMessage(''); try { await onResetUserPassword(customer.id); setUserMessage(`Password reset email requested for ${customer.email}.`) } catch (error) { setUserMessage(error instanceof Error ? error.message : 'Could not request a reset email.') } finally { setUserBusy(false) } }}>Send password reset</button>
@@ -3110,7 +3255,7 @@ function AdminOrdersPage({
             <div><span className="prepared-eyebrow">Catalog management</span><h3>Add a product</h3><p>New products start with validated price and stock values.</p></div>
             <div className="admin-create-product-fields">
               <label>Product name<input name="product-name" required maxLength={120} /></label>
-              <label>Category<select name="product-category" required defaultValue=""><option value="" disabled>Select a category</option>{categories.filter((category): category is Category => category !== 'All items').map((category) => <option key={category}>{category}</option>)}</select></label>
+              <label>Category<select name="product-category" required defaultValue=""><option value="" disabled>Select a category</option>{categories.filter((category) => category !== 'All items').map((category) => <option key={category}>{category}</option>)}</select></label>
               <label>Price (₱)<input name="product-price" type="number" min="0" step="0.01" required /></label>
               <label>Initial stock<input name="product-stock" type="number" min="0" step="1" defaultValue="0" required /></label>
               <label className="admin-create-product-description">Description<textarea name="product-description" rows={2} maxLength={600} required /></label>
@@ -3131,12 +3276,80 @@ function AdminOrdersPage({
           })}</tbody></table></div>
         </section>
       )}
+      {section === 'categories' && (
+        <section className="admin-orders-panel admin-category-management">
+          <div className="admin-orders-toolbar"><div><h2>Product categories</h2><p>{categories.filter((category) => category !== 'All items').length} categories · {products.length} products</p></div></div>
+          <form className="admin-category-create" onSubmit={async (event) => {
+            event.preventDefault()
+            const name = newCategoryName.trim()
+            if (!name) return
+            setCategoryBusy(true); setCategoryMessage('')
+            try { await onCreateCategory(name); setNewCategoryName(''); setCategoryMessage(`Added “${name}”.`) }
+            catch (error) { setCategoryMessage(error instanceof Error ? error.message : 'Could not add this category.') }
+            finally { setCategoryBusy(false) }
+          }}>
+            <label>New category name<input value={newCategoryName} onChange={(event) => setNewCategoryName(event.target.value)} maxLength={80} required placeholder="e.g. Home Safety" /></label>
+            <button className="checkout-primary" type="submit" disabled={categoryBusy}>{categoryBusy ? 'Saving…' : 'Add category'}</button>
+          </form>
+          <div className="admin-category-list">
+            {categories.filter((category) => category !== 'All items').map((category) => {
+              const productCount = products.filter((product) => product.category === category).length
+              return (
+                <article className="admin-category-row" key={category}>
+                  <div className="admin-category-name">
+                    {editingCategory === category ? (
+                      <form onSubmit={async (event) => {
+                        event.preventDefault()
+                        const name = editedCategoryName.trim()
+                        if (!name) return
+                        setCategoryBusy(true); setCategoryMessage('')
+                        try { await onRenameCategory(category, name); setEditingCategory(null); setCategoryMessage('Category renamed.') }
+                        catch (error) { setCategoryMessage(error instanceof Error ? error.message : 'Could not rename this category.') }
+                        finally { setCategoryBusy(false) }
+                      }}>
+                        <input value={editedCategoryName} onChange={(event) => setEditedCategoryName(event.target.value)} maxLength={80} required aria-label={`Rename ${category}`} />
+                        <button type="submit" disabled={categoryBusy}>Save</button>
+                        <button type="button" onClick={() => setEditingCategory(null)}>Cancel</button>
+                      </form>
+                    ) : <><strong>{category}</strong><small>{productCount} {productCount === 1 ? 'product' : 'products'}</small></>}
+                  </div>
+                  {editingCategory !== category && <div className="admin-category-actions">
+                    <button type="button" onClick={() => { setEditingCategory(category); setEditedCategoryName(category) }}>Rename</button>
+                    <button type="button" disabled={categoryBusy || productCount > 0} title={productCount > 0 ? 'Move products out of this category first.' : 'Remove this category'} onClick={async () => {
+                      setCategoryBusy(true); setCategoryMessage('')
+                      try { await onDeleteCategory(category); setCategoryMessage(`Removed “${category}”.`) }
+                      catch (error) { setCategoryMessage(error instanceof Error ? error.message : 'Could not remove this category.') }
+                      finally { setCategoryBusy(false) }
+                    }}>Remove</button>
+                  </div>}
+                </article>
+              )
+            })}
+          </div>
+          <div className="admin-orders-toolbar"><div><h2>Organize products</h2><p>Choose a category for each product.</p></div></div>
+          <div className="admin-category-product-list">
+            {products.map((product) => <label className="admin-category-product" key={product.id}>
+              <span><strong>{product.name}</strong><small>{product.category}</small></span>
+              <select aria-label={`Category for ${product.name}`} value={product.category} onChange={async (event) => {
+                const nextCategory = event.target.value
+                setCategoryBusy(true); setCategoryMessage('')
+                try { await onMoveProductCategory(product.id, nextCategory); setCategoryMessage(`${product.name} moved to ${nextCategory}.`) }
+                catch (error) { setCategoryMessage(error instanceof Error ? error.message : 'Could not move this product.') }
+                finally { setCategoryBusy(false) }
+              }} disabled={categoryBusy}>
+                {categories.filter((value) => value !== 'All items').map((value) => <option key={value}>{value}</option>)}
+              </select>
+            </label>)}
+          </div>
+          {categoryMessage && <p className="admin-product-message" role="status">{categoryMessage}</p>}
+        </section>
+      )}
       {section === 'fulfillment' && (
         <div className="admin-fulfillment-grid">{fulfillmentStatuses.map((status) => { const matchingOrders = orders.filter((order) => order.status === status); return <section className="admin-fulfillment-column" key={status}><header><strong>{status}</strong><span>{matchingOrders.length}</span></header>{matchingOrders.length === 0 ? <p>No orders</p> : matchingOrders.map((order) => <article key={order.id}><strong>{order.id}</strong><span>{order.contactName}</span><small>{order.address || 'No shipping address'}</small><b>{formatPrice(order.total)}</b><select aria-label={`Update status for ${order.id}`} value={order.status} onChange={(event) => onUpdateStatus(order.id, event.target.value as OrderRecord['status'])}>{fulfillmentStatuses.map((value) => <option key={value}>{value}</option>)}</select></article>)}</section> })}</div>
       )}
       {section === 'reports' && (
         <div className="admin-report-grid">
-          <section className="admin-orders-panel"><div className="admin-orders-toolbar"><div><h2>Sales by product category</h2><p>Based on placed orders, excluding awaiting payment</p></div></div>{categorySales.length === 0 ? <div className="admin-empty-state"><h3>No sales data yet</h3><p>Completed demo checkouts will appear in reports.</p></div> : <div className="admin-report-bars">{categorySales.map(([category, value]) => <div key={category}><span>{category}</span><div><i style={{ width: `${Math.max(5, (value / categorySales[0][1]) * 100)}%` }} /></div><strong>{formatPrice(value)}</strong></div>)}</div>}</section>
+          <section className="admin-orders-panel"><div className="admin-orders-toolbar"><div><h2>Sales by product category</h2><p>Based on placed orders, excluding awaiting payment</p></div></div>{categorySales.length === 0 ? <div className="admin-empty-state"><h3>No sales data yet</h3><p>Completed checkouts will appear in reports.</p></div> : <div className="admin-report-bars">{categorySales.map(([category, value]) => <div key={category}><span>{category}</span><div><i style={{ width: `${Math.max(5, (value / categorySales[0][1]) * 100)}%` }} /></div><strong>{formatPrice(value)}</strong></div>)}</div>}</section>
           <section className="admin-orders-panel"><div className="admin-orders-toolbar"><div><h2>Best-selling products</h2><p>Units in paid or fulfilled orders</p></div></div>{itemSales.size === 0 ? <div className="admin-empty-state"><h3>No sales data yet</h3><p>Placed orders will populate this report.</p></div> : <ol className="admin-top-products">{[...itemSales.entries()].sort((first, second) => second[1] - first[1]).slice(0, 5).map(([productId, quantity]) => { const product = products.find((item) => item.id === productId); return product ? <li key={productId}><span><strong>{product.name}</strong><small>{product.category}</small></span><b>{quantity} sold</b></li> : null })}</ol>}</section>
         </div>
       )}
@@ -3154,7 +3367,7 @@ function InvoicePage({
   onViewOrders: () => void
 }) {
   if (!order) {
-    return <main className="invoice-page"><section className="invoice-empty"><h1>Invoice unavailable</h1><p>We couldn’t find that order in this browser’s saved demo data.</p><button type="button" onClick={onViewOrders}>View Order History</button></section></main>
+    return <main className="invoice-page"><section className="invoice-empty"><h1>Invoice unavailable</h1><p>We couldn’t find that order in this browser’s saved order history.</p><button type="button" onClick={onViewOrders}>View Order History</button></section></main>
   }
 
   return (
@@ -3186,12 +3399,11 @@ function InvoicePage({
           <footer className="invoice-document-note">Thank you for choosing AquaShield Relief Co. · Stay ready. Stay safe.</footer>
         </article>
         <aside className="invoice-aside">
-          <section><h2>Invoice Summary</h2><div className="invoice-summary-status"><span><Icon name="card" /></span><div><strong>{order.status === 'Awaiting payment' ? 'Payment pending' : 'No payment processed'}</strong><small>{order.paymentMethod} · demo only</small></div></div><dl><div><dt>Invoice reference</dt><dd>INV-{order.id}</dd></div><div><dt>Payment method</dt><dd>{order.paymentMethod}</dd></div></dl><button type="button" onClick={() => window.print()}>Download / Print Invoice</button></section>
+          <section><h2>Invoice Summary</h2><div className="invoice-summary-status"><span><Icon name="card" /></span><div><strong>{order.status === 'Awaiting payment' ? 'Payment pending' : 'No payment processed'}</strong><small>{order.paymentMethod}</small></div></div><dl><div><dt>Invoice reference</dt><dd>INV-{order.id}</dd></div><div><dt>Payment method</dt><dd>{order.paymentMethod}</dd></div></dl><button type="button" onClick={() => window.print()}>Download / Print Invoice</button></section>
           <section><h2>Delivery Details</h2><div className="invoice-delivery-method"><Icon name="truck" /><div><strong>{order.deliveryMethod}</strong><small>Delivery method</small></div></div><dl><div><dt>Order number</dt><dd>{order.id}</dd></div></dl><button className="invoice-track-button" type="button" onClick={() => onTrackOrder(order.id)}>Track this order</button></section>
           <section className="invoice-help"><h2>Need assistance?</h2><p>Need a billing correction or copy? Contact your customer support team.</p><a href="mailto:support@aquashield.example">Contact Help &amp; Support</a></section>
         </aside>
       </div>
-      <p className="invoice-demo-note">This is a demonstration invoice. No payment or tax receipt has been issued.</p>
     </main>
   )
 }
@@ -3205,15 +3417,6 @@ function TrackOrderPage({ orders, initialOrderId, onViewOrders }: { orders: Orde
   const activeStage = order
     ? Math.max(0, trackingStages.indexOf(order.status))
     : 0
-  const mapStops = [
-    { x: 14, y: 75, label: 'Manila hub' },
-    { x: 36, y: 57, label: 'Sorting center' },
-    { x: 57, y: 38, label: 'Regional hub' },
-    { x: 78, y: 55, label: 'Local hub' },
-    { x: 90, y: 25, label: 'Delivery address' },
-  ]
-  const trackingRouteStyle = { '--route-progress': `${activeStage * 25}%` } as CSSProperties
-
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setSubmittedOrderId(orderNumber)
@@ -3222,9 +3425,9 @@ function TrackOrderPage({ orders, initialOrderId, onViewOrders }: { orders: Orde
   return (
     <main className="track-order-page">
       <section className="track-order-hero">
-        <span className="prepared-eyebrow">Delivery tracking preview</span>
+        <span className="prepared-eyebrow">Delivery tracking</span>
         <h1>Track your emergency dispatch</h1>
-        <p>Enter an AquaShield reference number to view a demo order’s delivery progress.</p>
+        <p>Enter an AquaShield reference number to view delivery progress.</p>
         <form onSubmit={handleSubmit}>
           <input aria-label="Order number" required value={orderNumber} onChange={(event) => setOrderNumber(event.target.value)} placeholder="e.g. ASR-12345678" />
           <button type="submit">Track Now</button>
@@ -3238,20 +3441,6 @@ function TrackOrderPage({ orders, initialOrderId, onViewOrders }: { orders: Orde
               <ol className="track-order-timeline">
                 {trackingStages.map((stage, index) => <li className={index <= activeStage ? 'complete' : ''} key={stage}><span>{index < activeStage ? '✓' : index + 1}</span><strong>{stage}</strong><small>{index === activeStage ? 'Current status' : index === 0 ? order.createdAt : index < activeStage ? 'Completed' : 'Upcoming'}</small></li>)}
               </ol>
-              <section className="tracking-map-card" aria-label="Illustrative package route map">
-                <div className="tracking-map-heading"><div><span className="prepared-eyebrow">Delivery route</span><h3>Package journey</h3></div><span className="tracking-map-live"><i /> Demo location</span></div>
-                <div className="tracking-map">
-                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={`Illustrative route from Manila hub to ${order.address || 'your delivery address'}`}>
-                    <path className="tracking-map-water" d="M0 0H100V100H0z" />
-                    <path className="tracking-map-road" d="M-5 22 C20 27 25 10 44 18 S72 34 104 13 M-4 48 C15 40 31 63 48 49 S80 37 105 56 M-5 84 C18 70 32 93 51 78 S83 77 105 88 M20 -5 C30 18 18 35 31 51 S47 78 40 105 M63 -5 C52 18 72 31 61 50 S71 78 61 105 M88 -5 C77 16 95 33 82 50 S88 78 100 105" />
-                    <path className="tracking-map-route" d="M14 75 C23 68 28 63 36 57 S49 44 57 38 S70 48 78 55 S85 38 90 25" pathLength="100" style={trackingRouteStyle} />
-                    {mapStops.map((stop, index) => <g className={index <= activeStage ? 'tracking-map-stop reached' : 'tracking-map-stop'} key={stop.label} transform={`translate(${stop.x} ${stop.y})`}><circle r={index === activeStage ? 2.4 : 1.7} /><text x="2.5" y="-2">{stop.label}</text></g>)}
-                    <g className="tracking-map-current" transform={`translate(${mapStops[activeStage].x} ${mapStops[activeStage].y})`}><circle r="4.2" /><circle r="1.7" /></g>
-                  </svg>
-                  <div className="tracking-map-caption"><Icon name="pin" /><span>{mapStops[activeStage].label}</span><strong>{order.status}</strong></div>
-                </div>
-                <p className="tracking-map-disclaimer">Illustrative route only. Live GPS and courier scans are not connected in this demo.</p>
-              </section>
               <p className="track-order-address"><strong>Shipping to</strong><br />{order.contactName} · {order.address}</p>
               <button className="track-order-history-button" type="button" onClick={onViewOrders}>View Order History</button>
             </div>
@@ -3262,13 +3451,12 @@ function TrackOrderPage({ orders, initialOrderId, onViewOrders }: { orders: Orde
               <div><span>VAT (12%)</span><strong>{formatPrice(order.tax)}</strong></div>
               <div><span>Shipping</span><strong>{order.shipping === 0 ? 'FREE' : formatPrice(order.shipping)}</strong></div>
               <div className="checkout-summary-total"><span>Total paid / due</span><strong>{formatPrice(order.total)}</strong></div>
-              <p className="checkout-demo-footer">Tracking is a local demo; no courier has received this order.</p>
             </aside>
           </>
         ) : (
           <section className="account-orders-empty">
-            <h2>{submittedOrderId ? 'Order not found' : 'No demo orders yet'}</h2>
-            <p>{submittedOrderId ? 'Check the reference number and try again.' : 'Place a demo order to see its tracking details here.'}</p>
+            <h2>{submittedOrderId ? 'Order not found' : 'No orders yet'}</h2>
+            <p>{submittedOrderId ? 'Check the reference number and try again.' : 'Place an order to see its tracking details here.'}</p>
             <button type="button" onClick={onViewOrders}>View Order History</button>
           </section>
         )}
@@ -3602,10 +3790,11 @@ function App() {
   const [adminCustomers, setAdminCustomers] = useState<AdminCustomer[]>([])
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([])
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(() => supabaseConfigured ? demoProducts : initialSavedDemoData.products)
+  const [catalogCategories, setCatalogCategories] = useState<string[]>(() => supabaseConfigured ? [...categories] : initialSavedDemoData.categories)
   const [, setCatalogMessage] = useState(
     supabaseConfigured
       ? 'Connecting to the product database…'
-      : initialSavedDemoData.warning ?? 'Demo mode: local-only storage. Use sample customer details; this is not a shared or secure database.',
+      : initialSavedDemoData.warning ?? 'Changes are saved only in this browser. Do not enter real personal or payment details.',
   )
   const [inventory, setInventory] = useState<Record<number, number>>(() =>
     supabaseConfigured
@@ -3648,15 +3837,17 @@ function App() {
     if (supabaseConfigured || initialSavedDemoData.preserveStoredData) return
     try {
       window.localStorage.setItem(DEMO_DATA_STORAGE_KEY, JSON.stringify({
+        catalogSignature: makeDemoCatalogSignature(),
         orders,
         products: catalogProducts,
         inventory,
         customerReviews,
+        categories: catalogCategories,
       }))
     } catch {
-      setCatalogMessage('Browser storage is full or unavailable. Demo changes may not survive a refresh.')
+      setCatalogMessage('Browser storage is full or unavailable. Changes may not survive a refresh.')
     }
-  }, [catalogProducts, customerReviews, inventory, orders])
+  }, [catalogCategories, catalogProducts, customerReviews, inventory, orders])
 
   const visibleProducts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -3729,6 +3920,21 @@ function App() {
     setCartToastVersion((version) => version + 1)
   }
 
+  async function refreshCategories() {
+    if (!supabase) return
+    const { data, error } = await supabase
+      .from('categories')
+      .select('name, display_order')
+      .eq('is_active', true)
+      .order('display_order')
+      .order('name')
+    if (error) {
+      setCatalogMessage(`Could not load categories: ${error.message}`)
+      return
+    }
+    setCatalogCategories(['All items', ...(data ?? []).map((row) => row.name)])
+  }
+
   async function refreshCatalog() {
     if (!supabase) return
     const { data, error } = await supabase
@@ -3737,7 +3943,7 @@ function App() {
       .eq('is_active', true)
       .order('id')
     if (error) {
-      setCatalogMessage(`Database connection failed; showing demo catalog. ${error.message}`)
+      setCatalogMessage(`Database connection failed; showing the product catalog. ${error.message}`)
       setCatalogProducts(demoProducts)
       return
     }
@@ -3746,9 +3952,7 @@ function App() {
       const price = Number(row.price)
       const stock = Number(row.stock_quantity)
       const categoryRow = row.categories as { name?: string } | null
-      const category = categoryRow?.name && categories.includes(categoryRow.name as CategoryFilter)
-        ? categoryRow.name as Category
-        : 'Tools & Equipment'
+      const category = categoryRow?.name ?? 'Tools & Equipment'
       return {
         id,
         name: row.name,
@@ -3846,6 +4050,7 @@ function App() {
       if (error) setCatalogMessage(`Could not restore your sign-in: ${error.message}`)
       return hydrateSession(data.session)
     })
+    void refreshCategories()
     void refreshCatalog()
     return () => {
       active = false
@@ -3880,6 +4085,24 @@ function App() {
       })))
     })
   }, [authUserId, isAdmin])
+
+  useEffect(() => {
+    if (supabase || !isAuthenticated || !isAdmin) return
+    try {
+      setAdminCustomers(readLocalAccounts().map((account) => ({
+        id: `demo:${account.email.toLowerCase()}`,
+        firstName: account.firstName,
+        lastName: account.lastName,
+        username: account.username || null,
+        role: 'buyer' as const,
+        email: account.email,
+        createdAt: null,
+      })))
+    } catch (error) {
+      setAdminCustomers([])
+      setCatalogMessage(error instanceof Error ? `Could not load browser accounts: ${error.message}` : 'Could not load browser accounts.')
+    }
+  }, [isAuthenticated, isAdmin])
 
   useEffect(() => {
     function syncRoute() {
@@ -4388,7 +4611,7 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
         kitProductIds.forEach((productId) => reserveStock(productId, item.quantity))
         if (audienceType === 'solo') {
           const includedBag = catalogProducts.find((product) => product.isKitBag)
-          if (!includedBag) throw new Error('The included Go-Bag is unavailable in the demo catalog.')
+          if (!includedBag) throw new Error('The included Go-Bag is unavailable in the product catalog.')
           reserveStock(includedBag.id, item.quantity)
         }
       } else if (item.product.id === 10) {
@@ -4540,24 +4763,77 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
     ))
   }
 
+  async function createCategory(rawName: string) {
+    const name = rawName.trim()
+    if (!name || name.length > 80) throw new Error('Category names must be between 1 and 80 characters.')
+    if (catalogCategories.some((category) => category.toLocaleLowerCase() === name.toLocaleLowerCase())) throw new Error('A category with this name already exists.')
+    const slug = categorySlug(name)
+    if (!slug) throw new Error('Enter a category name with at least one letter or number.')
+    if (supabase) {
+      const { error } = await supabase.from('categories').insert({ name, slug, display_order: catalogCategories.length - 1, is_active: true })
+      if (error) throw new Error(error.message)
+      await refreshCategories()
+      return
+    }
+    setCatalogCategories((current) => [...current, name])
+  }
+
+  async function renameCategory(previousName: string, rawNextName: string) {
+    const nextName = rawNextName.trim()
+    if (!nextName || nextName.length > 80) throw new Error('Category names must be between 1 and 80 characters.')
+    if (catalogCategories.some((category) => category !== previousName && category.toLocaleLowerCase() === nextName.toLocaleLowerCase())) throw new Error('A category with this name already exists.')
+    if (supabase) {
+      const { data: category, error: findError } = await supabase.from('categories').select('id').eq('name', previousName).eq('is_active', true).single()
+      if (findError) throw new Error(findError.message)
+      const { error } = await supabase.from('categories').update({ name: nextName, slug: categorySlug(nextName) }).eq('id', category.id)
+      if (error) throw new Error(error.message)
+    }
+    setCatalogCategories((current) => current.map((category) => category === previousName ? nextName : category))
+    setCatalogProducts((current) => current.map((product) => product.category === previousName ? { ...product, category: nextName } : product))
+    setOrders((current) => current.map((order) => ({
+      ...order,
+      items: order.items.map((item) => item.product.category === previousName
+        ? { ...item, product: { ...item.product, category: nextName } }
+        : item),
+    })))
+  }
+
+  async function deleteCategory(name: string) {
+    if (catalogProducts.some((product) => product.category === name)) throw new Error('Move all products out of this category before removing it.')
+    if (supabase) {
+      const { data: category, error: findError } = await supabase.from('categories').select('id').eq('name', name).eq('is_active', true).single()
+      if (findError) throw new Error(findError.message)
+      const { data: assignedProducts, error: productsError } = await supabase.from('products').select('id').eq('category_id', category.id).limit(1)
+      if (productsError) throw new Error(productsError.message)
+      if (assignedProducts?.length) throw new Error('Move all products out of this category before removing it.')
+      const { error } = await supabase.from('categories').update({ is_active: false }).eq('id', category.id)
+      if (error) throw new Error(error.message)
+      await refreshCategories()
+    } else {
+      setCatalogCategories((current) => current.filter((category) => category !== name))
+    }
+    if (activeCategory === name) setActiveCategory('All items')
+  }
+
+  async function moveProductCategory(productId: number, nextCategory: string) {
+    if (!catalogCategories.includes(nextCategory) || nextCategory === 'All items') throw new Error('Choose an active category.')
+    if (supabase) {
+      const { data: category, error: categoryError } = await supabase.from('categories').select('id').eq('name', nextCategory).eq('is_active', true).single()
+      if (categoryError) throw new Error(categoryError.message)
+      const { error } = await supabase.from('products').update({ category_id: category.id }).eq('id', productId)
+      if (error) throw new Error(error.message)
+    }
+    setCatalogProducts((current) => current.map((product) => product.id === productId ? { ...product, category: nextCategory } : product))
+    await refreshCatalog()
+  }
+
   async function createProduct(input: NewProductInput) {
     if (supabase) {
-      const categorySlugs: Record<Category, string> = {
-        'Medical & First Aid': 'medical-first-aid',
-        'Water Purification': 'water-purification',
-        'Emergency Food': 'emergency-food',
-        'Shelter & Apparel': 'shelter-apparel',
-        'Safety Gear': 'safety-gear',
-        'Emergency Power': 'emergency-power',
-        'Emergency Lighting': 'emergency-lighting',
-        'Emergency Communications': 'emergency-communications',
-        'Tools & Equipment': 'tools-equipment',
-        'Barangay Bundles': 'barangay-bundles',
-      }
       const { data: category, error: categoryError } = await supabase
         .from('categories')
         .select('id')
-        .eq('slug', categorySlugs[input.category])
+        .eq('name', input.category)
+        .eq('is_active', true)
         .single()
       if (categoryError) throw new Error(categoryError.message)
       const sku = `ASR-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
@@ -4690,6 +4966,7 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
   }
 
   const selectedProduct = catalogProducts.find((product) => product.id === productRoute?.productId)
+    ?? orders.flatMap((order) => order.items.map((item) => item.product)).find((product) => product.id === productRoute?.productId)
 
   if (authPage === 'login' || authPage === 'signup') {
     return (
@@ -4829,6 +5106,7 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
                 ['customers', '♙', 'Customers'],
                 ['fulfillment', '⇢', 'Fulfillment'],
                 ['inventory', '▦', 'Inventory'],
+                ['categories', '▤', 'Categories'],
                 ['reports', '▥', 'Reports'],
               ] as const).map(([section, icon, label]) => (
                 <button className={adminSection === section && accountPage === 'admin' ? 'selected' : ''} type="button" key={section} aria-current={adminSection === section && accountPage === 'admin' ? 'page' : undefined} onClick={() => navigateAdminSection(section)}>
@@ -4839,7 +5117,7 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
               ))}
             </nav>
             <div className="admin-sidebar-footer">
-              <span>Signed in as</span><strong>{authEmail || 'Admin demo'}</strong>
+              <span>Signed in as</span><strong>{authEmail || 'Administrator'}</strong>
               <button type="button" onClick={signOutAdmin}>Sign out</button>
             </div>
           </>
@@ -4855,7 +5133,7 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
         </button>
         {(isSidebarCategoriesOpen || isMobileCategoryMenuOpen) && (
           <nav className={`sidebar-category-filters${isSidebarCategoriesOpen ? ' expanded' : ''}${isMobileCategoryMenuOpen ? ' mobile-open' : ''}`} id="sidebar-category-filters" aria-label="Shop categories">
-            {categories.map((category) => (
+            {catalogCategories.map((category) => (
               <button
                 className={isShopPage && activeCategory === category ? 'selected' : ''}
                 key={category}
@@ -4863,7 +5141,7 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
                 aria-pressed={isShopPage && activeCategory === category}
                 onClick={() => selectSidebarCategory(category)}
               >
-                {category === 'All items' ? 'Shop All' : category === 'Water Purification' ? 'Water & Hygiene' : category === 'Emergency Food' ? 'Food & Nutrition' : category === 'Emergency Power' ? 'Emergency Power' : category === 'Emergency Lighting' ? 'Emergency Lighting' : category === 'Emergency Communications' ? 'Communications' : category === 'Tools & Equipment' ? 'Tools & Accessories' : category === 'Shelter & Apparel' ? 'Shelter & Warmth' : category === 'Barangay Bundles' ? 'Emergency Kits' : category}
+                {category === 'All items' ? 'Shop All' : category === 'Water Purification' ? 'Water & Hygiene' : category === 'Emergency Food' ? 'Food & Nutrition' : category === 'Emergency Power' ? 'Emergency Power' : category === 'Emergency Lighting' ? 'Emergency Lighting' : category === 'Emergency Communications' ? 'Communications' : category === 'Tools & Equipment' ? 'Tools & Accessories' : category === 'Shelter & Apparel' ? 'Shelter & Warmth' : category === 'Pets' ? 'Pets' : category === 'Infants & Children' ? 'Infants & Children' : category === 'Elderly & PWDs' ? 'Elderly & PWDs' : category === 'Barangay Bundles' ? 'Emergency Kits' : category}
               </button>
             ))}
           </nav>
@@ -4935,7 +5213,13 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
         <AudienceModePrompt onChoose={selectAudience} />
       )}
       {accountPage === 'orders' ? (
-        <OrdersPage orders={orders} onTrackOrder={(orderId) => navigateToAccountPage('track', orderId)} onInvoice={(orderId) => navigateToAccountPage('invoice', orderId)} />
+      <OrdersPage
+        orders={orders}
+        onTrackOrder={(orderId) => navigateToAccountPage('track', orderId)}
+        onInvoice={(orderId) => navigateToAccountPage('invoice', orderId)}
+        onViewProduct={(product) => navigateToProduct(product)}
+        onWriteReview={(product) => navigateToProductReviews(product, 'write-review')}
+      />
       ) : accountPage === 'addresses' ? (
         <AddressBookPage addresses={savedAddresses} onSave={saveAddress} onDelete={deleteAddress} />
       ) : accountPage === 'track' ? (
@@ -4943,6 +5227,7 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
       ) : accountPage === 'admin' ? (
         <AdminOrdersPage
           products={catalogProducts}
+          categories={catalogCategories}
           orders={orders}
           customers={adminCustomers}
           section={adminSection}
@@ -4950,6 +5235,10 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
           onSelectSection={navigateAdminSection}
           onUpdateInventory={updateInventory}
           onCreateProduct={createProduct}
+          onCreateCategory={createCategory}
+          onRenameCategory={renameCategory}
+          onDeleteCategory={deleteCategory}
+          onMoveProductCategory={moveProductCategory}
           onUpdateStatus={updateOrderStatus}
           onTrackOrder={(orderId) => navigateToAccountPage('track', orderId)}
           onInvoice={(orderId) => navigateToAccountPage('invoice', orderId)}
@@ -5185,8 +5474,8 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
             <p>Providing commercial-grade flood preparedness and disaster relief supplies directly to Filipino households, families, and local government units nationwide.</p>
             <div className="social-links" aria-label="Social links"><a href="#footer">f</a><a href="#footer">𝕏</a><a href="#footer">◎</a><a href="#footer">▶</a></div>
           </div>
-          <div className="footer-link-group"><h2>Shop categories</h2><a href="#products">Complete Bundles</a><a href="#products">Water &amp; Sanitation</a><a href="#products">Medical &amp; First Aid</a><a href="#products">Safety &amp; Gear</a><a href="#products">Power &amp; Comms</a></div>
-          <div className="footer-link-group"><h2>Support &amp; trust</h2><a href="/track-order" onClick={(event) => { event.preventDefault(); navigateToAccountPage('track') }}>Track My Order</a><a href="#footer">LGU Procurements</a><a href="#footer">GCash &amp; COD Guide</a><a href="#footer">Refund Policy</a><a href="#footer">Contact Helpline</a></div>
+          <div className="footer-link-group"><h2>Shop categories</h2><a href="/shop" onClick={(event) => { event.preventDefault(); selectSidebarCategory('Barangay Bundles') }}>Complete Bundles</a><a href="/shop" onClick={(event) => { event.preventDefault(); selectSidebarCategory('Water Purification') }}>Water &amp; Sanitation</a><a href="/shop" onClick={(event) => { event.preventDefault(); selectSidebarCategory('Medical & First Aid') }}>Medical &amp; First Aid</a><a href="/shop" onClick={(event) => { event.preventDefault(); selectSidebarCategory('Safety Gear') }}>Safety &amp; Gear</a><a href="/shop" onClick={(event) => { event.preventDefault(); selectSidebarCategory('Emergency Power') }}>Power &amp; Comms</a></div>
+          <div className="footer-link-group"><h2>Support &amp; trust</h2><a href="/track-order" onClick={(event) => { event.preventDefault(); navigateToAccountPage('track') }}>Track My Order</a><a href="/shop" onClick={(event) => { event.preventDefault(); selectSidebarCategory('Barangay Bundles') }}>LGU Procurements</a><a href="/shop" onClick={(event) => { event.preventDefault(); selectSidebarCategory('Emergency Power') }}>GCash &amp; COD Guide</a><a href="/orders" onClick={(event) => { event.preventDefault(); navigateToAccountPage('orders') }}>Refund Policy</a><a href="/addresses" onClick={(event) => { event.preventDefault(); navigateToAccountPage('addresses') }}>Contact Helpline</a></div>
           <div className="footer-link-group payment-group"><h2>Accepted payments</h2><span><Icon name="card" /> GCash Available</span><span><Icon name="card" /> Maya Wallet</span><span><Icon name="card" /> Cash on Delivery</span><small>All logistics and handling are fully disinfected, secure, and cleared for rapid distribution.</small></div>
         </div>
         <div className="prepared-footer-bottom">

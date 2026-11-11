@@ -19,7 +19,7 @@ Deno.serve(async (request) => {
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const siteUrl = Deno.env.get('SITE_URL')?.replace(/\/$/, '')
-  if (!supabaseUrl || !anonKey || !serviceKey || !siteUrl) return json(500, { error: 'Admin user service is not configured.' })
+  if (!supabaseUrl || !anonKey || !serviceKey) return json(500, { error: 'Admin user service is not configured.' })
 
   const authorization = request.headers.get('Authorization') ?? ''
   const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : ''
@@ -44,16 +44,59 @@ Deno.serve(async (request) => {
   const action = body.action
 
   if (action === 'list') {
-    const [{ data: profiles, error: profilesError }, { data: users, error: usersError }] = await Promise.all([
-      serviceClient.from('profiles').select('id, first_name, last_name, username, role, created_at').order('created_at', { ascending: false }),
-      serviceClient.auth.admin.listUsers({ page: 1, perPage: 1000 }),
-    ])
-    if (profilesError || usersError) return json(500, { error: profilesError?.message ?? usersError?.message ?? 'Could not load accounts.' })
-    const emailById = new Map((users?.users ?? []).map((user) => [user.id, user.email ?? '']))
-    return json(200, { users: (profiles ?? []).map((profile) => ({ ...profile, email: emailById.get(profile.id) ?? '' })) })
+    const authUsers: Array<{
+      id: string
+      email?: string | null
+      user_metadata?: Record<string, unknown> | null
+    }> = []
+    for (let page = 1; ; page += 1) {
+      const { data, error } = await serviceClient.auth.admin.listUsers({ page, perPage: 1000 })
+      if (error) return json(500, { error: error.message })
+      authUsers.push(...data.users)
+      if (data.users.length < 1000) break
+    }
+
+    const profiles = []
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await serviceClient
+        .from('profiles')
+        .select('id, first_name, last_name, username, role, created_at')
+        .order('created_at', { ascending: false })
+        .range(offset, offset + 999)
+      if (error) return json(500, { error: error.message })
+      profiles.push(...(data ?? []))
+      if ((data ?? []).length < 1000) break
+    }
+
+    const profileById = new Map(profiles.map((profile) => [profile.id, profile]))
+    const missingProfiles = authUsers
+      .filter((user) => !profileById.has(user.id))
+      .map((user) => ({
+        id: user.id,
+        first_name: String(user.user_metadata?.first_name ?? '').trim(),
+        last_name: String(user.user_metadata?.last_name ?? '').trim(),
+        username: null,
+        role: 'buyer' as const,
+      }))
+
+    if (missingProfiles.length > 0) {
+      const { data: repairedProfiles, error: repairError } = await serviceClient
+        .from('profiles')
+        .upsert(missingProfiles, { onConflict: 'id' })
+        .select('id, first_name, last_name, username, role, created_at')
+      if (repairError) return json(500, { error: `Could not restore missing account profiles: ${repairError.message}` })
+      for (const profile of repairedProfiles ?? []) profileById.set(profile.id, profile)
+    }
+
+    const emailById = new Map(authUsers.map((user) => [user.id, user.email ?? '']))
+    const listedProfiles = [...profileById.values()].sort((left, right) =>
+      right.created_at.localeCompare(left.created_at),
+    )
+    return json(200, { users: listedProfiles.map((profile) => ({ ...profile, email: emailById.get(profile.id) ?? '' })) })
   }
 
   if (action === 'invite') {
+    if (!siteUrl) return json(500, { error: 'Set the SITE_URL secret before sending account invitations.' })
     const email = String(body.email ?? '').trim().toLowerCase()
     const firstName = String(body.firstName ?? '').trim()
     const lastName = String(body.lastName ?? '').trim()
@@ -103,6 +146,7 @@ Deno.serve(async (request) => {
   }
 
   if (action === 'send_reset') {
+    if (!siteUrl) return json(500, { error: 'Set the SITE_URL secret before sending password resets.' })
     const userId = String(body.userId ?? '')
     const { data: user, error: userError } = await serviceClient.auth.admin.getUserById(userId)
     if (userError || !user.user?.email) return json(404, { error: 'Could not find an email for this account.' })
