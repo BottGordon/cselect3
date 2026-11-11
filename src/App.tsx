@@ -89,8 +89,6 @@ const SALES_TAX_RATE = 0.12
 const ACCOUNT_STORAGE_KEY = 'aquashield.accounts.v1'
 const DEMO_DATA_STORAGE_KEY = 'aquashield.demo-data.v1'
 const PASSWORD_HASH_ITERATIONS = 310_000
-const LOCAL_ADMIN_EMAIL = import.meta.env.DEV ? 'admin@aquashield.demo' : ''
-const LOCAL_ADMIN_PASSWORD = import.meta.env.DEV ? 'AquaShield2026!' : ''
 
 type LocalAccount = {
   email: string
@@ -821,7 +819,6 @@ function AuthScreen({
   onAdminLogin,
   onGuestContinue,
   databaseConfigured,
-  initialAdminMode = false,
 }: {
   page: 'login' | 'signup'
   onNavigate: (nextPage: AuthPage, email?: string) => void
@@ -830,7 +827,6 @@ function AuthScreen({
   onAdminLogin: (email: string, firstName?: string, userId?: string) => void
   onGuestContinue: () => void
   databaseConfigured: boolean
-  initialAdminMode?: boolean
 }) {
   const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
@@ -842,7 +838,6 @@ function AuthScreen({
   const [passwordClicked, setPasswordClicked] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isAdminMode, setIsAdminMode] = useState(initialAdminMode)
   const isSignup = page === 'signup'
   const showPasswordRequirements = passwordClicked || password.length > 0
   const passwordRequirements = [
@@ -897,10 +892,6 @@ function AuthScreen({
           .eq('id', data.user.id)
           .single()
         if (profileError) throw profileError
-        if (isAdminMode && profile.role !== 'admin') {
-          await supabase.auth.signOut()
-          throw new Error('This account does not have administrator access.')
-        }
         if (profile.role === 'admin') {
           onAdminLogin(normalizedEmail, profile.first_name, data.user.id)
         } else {
@@ -927,15 +918,6 @@ function AuthScreen({
         })
         window.localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(accounts))
         onLoginSuccess(normalizedEmail, firstName.trim())
-        return
-      }
-
-      if (isAdminMode) {
-        if (!import.meta.env.DEV || normalizedEmail !== LOCAL_ADMIN_EMAIL || password !== LOCAL_ADMIN_PASSWORD) {
-          setFormMessage('The administrator email or password is incorrect.')
-          return
-        }
-        onAdminLogin(normalizedEmail)
         return
       }
 
@@ -988,22 +970,14 @@ function AuthScreen({
       <section className="auth-content">
         <div className={isSignup ? 'auth-card signup-card' : 'auth-card'}>
           <div className="auth-card-heading">
-            <h2>{isSignup ? 'Create your account' : isAdminMode ? 'Admin sign in' : 'Welcome back'}</h2>
+            <h2>{isSignup ? 'Create your account' : 'Welcome back'}</h2>
             <p>
               {isSignup
                 ? 'Save Go-Bags, addresses and order history in one place.'
-                : isAdminMode
-                  ? 'Sign in to manage buyer orders and fulfillment.'
-                  : 'Sign in to your AquaShield account.'}
+                : 'Sign in to your AquaShield account.'}
             </p>
           </div>
 
-          {!isSignup && (
-            <div className="auth-role-switch" role="group" aria-label="Sign in as">
-              <button type="button" className={!isAdminMode ? 'active' : ''} aria-pressed={!isAdminMode} onClick={() => { setIsAdminMode(false); setFormMessage('') }}>Buyer</button>
-              <button type="button" className={isAdminMode ? 'active' : ''} aria-pressed={isAdminMode} onClick={() => { setIsAdminMode(true); setFormMessage('') }}>Admin</button>
-            </div>
-          )}
 
           <form className="auth-form" onSubmit={handleSubmit}>
             {isSignup && (
@@ -1165,7 +1139,6 @@ function AuthScreen({
               <button
                 className="auth-forgot"
                 type="button"
-                hidden={isAdminMode}
                 onClick={() => onNavigate('forgot-password', email)}
               >
                 Forgot password?
@@ -1178,14 +1151,10 @@ function AuthScreen({
 
             {!isSignup && (
               <>
-                {!isAdminMode && (
-                  <>
-                    {!databaseConfigured && <button className="auth-guest" type="button" onClick={onGuestContinue}>
-                      Continue as Guest
-                    </button>}
-                    <p className="auth-flow-note">Sign in securely with your email and password.</p>
-                  </>
-                )}
+                {!databaseConfigured && <button className="auth-guest" type="button" onClick={onGuestContinue}>
+                  Continue as Guest
+                </button>}
+                <p className="auth-flow-note">Sign in securely with your email and password.</p>
               </>
             )}
 
@@ -1193,20 +1162,15 @@ function AuthScreen({
           </form>
 
           <div className="auth-switch">
-            <span>{isSignup ? 'Already have an account?' : isAdminMode ? 'Shopping as a buyer?' : 'New to AquaShield?'}</span>
+            <span>{isSignup ? 'Already have an account?' : 'New to AquaShield?'}</span>
             <a
-              href={isSignup || isAdminMode ? '/login' : '/signup'}
+              href={isSignup ? '/login' : '/signup'}
               onClick={(event) => {
                 event.preventDefault()
-                if (isAdminMode) {
-                  setIsAdminMode(false)
-                  setFormMessage('')
-                  return
-                }
                 onNavigate(isSignup ? 'login' : 'signup')
               }}
             >
-              {isSignup ? 'Sign in' : isAdminMode ? 'Buyer sign in' : 'Create an account'} <span aria-hidden="true">→</span>
+              {isSignup ? 'Sign in' : 'Create an account'} <span aria-hidden="true">→</span>
             </a>
           </div>
         </div>
@@ -4979,7 +4943,6 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
         onAdminLogin={completeAdminSignIn}
         onGuestContinue={() => completeSignIn('')}
         databaseConfigured={supabaseConfigured}
-        initialAdminMode={window.location.pathname === '/admin'}
       />
     )
   }
@@ -5007,7 +4970,6 @@ function completeSignIn(email: string, firstName = '', userId?: string) {
         onAdminLogin={completeAdminSignIn}
         onGuestContinue={() => completeSignIn('')}
         databaseConfigured={supabaseConfigured}
-        initialAdminMode
       />
     )
   }
